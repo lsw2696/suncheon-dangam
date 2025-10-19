@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>순천미인 단감 | 주문 웹앱</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="순천 단감 직판매 | 신선한 순천미인 단감 온라인 주문" />
+  <link rel="icon" href="https://i.imgur.com/nZVxOHE.png" />
+  <style>
+    body { background-color: #fff8f1; color: #2d2d2d; }
+    .btn-primary { background-color: #f97316; color: white; }
+    .btn-primary:hover { background-color: #ea580c; }
+    .header-bg { background: linear-gradient(to right, #f97316, #fb923c); color: white; }
+    .input { width: 100%; border-radius: 0.5rem; border: 1px solid #ddd; padding: 0.5rem 0.75rem; outline: none; }
+    .input:focus { border-color: #fb923c; box-shadow: 0 0 0 2px #fed7aa; }
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="header-bg p-4 flex justify-between items-center shadow">
+    <div class="flex items-center gap-3">
+      <img src="https://i.imgur.com/nZVxOHE.png" alt="로고" class="w-10 h-10 rounded-full shadow" />
+      <h1 class="text-2xl font-bold">순천미인 단감</h1>
+    </div>
+    <nav class="flex gap-4 text-sm">
+      <a href="#home">홈</a>
+      <a href="#order">주문</a>
+      <a href="#track">주문조회</a>
+      <a href="#admin">관리자</a>
+    </nav>
+  </header>
+
+  <!-- MAIN -->
+  <main class="max-w-6xl mx-auto p-4">
+    <!-- HOME -->
+    <section id="home" class="text-center">
+      <div class="relative rounded-2xl overflow-hidden shadow-lg">
+        <img src="https://i.imgur.com/jpvbS5k.jpeg" alt="순천미인 단감 대표 이미지" class="w-full h-[500px] object-cover" />
+        <div class="absolute inset-0 bg-black/30 flex flex-col justify-center items-center text-white">
+          <h2 class="text-4xl font-bold mb-3">달콤한 순천미인 단감</h2>
+          <p class="max-w-2xl">순천의 황금빛 들녘과 맑은 강바람 아래에서 자란 신선한 단감 — 산지직송으로 만나보세요!</p>
+          <a href="#order" class="mt-6 px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-xl font-semibold">지금 주문하기</a>
+        </div>
+      </div>
+      <div id="map" class="mt-8 h-64 rounded-2xl shadow"></div>
+      <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=YOUR_NAVER_MAP_CLIENT_ID"></script>
+      <script>
+        var map = new naver.maps.Map('map', {
+          center: new naver.maps.LatLng(34.9481, 127.4890),
+          zoom: 11
+        });
+        new naver.maps.Marker({ position: new naver.maps.LatLng(34.9481, 127.4890), map: map });
+      </script>
+    </section>
+
+    <!-- ORDER -->
+    <section id="order" class="mt-10">
+      <h2 class="text-2xl font-bold mb-4 text-orange-600">주문서</h2>
+      <div class="bg-white p-6 rounded-2xl shadow space-y-4">
+        <div>
+          <label>주문자명</label>
+          <input class="input" id="buyerName" />
+        </div>
+        <div>
+          <label>연락처</label>
+          <input class="input" id="buyerPhone" />
+        </div>
+        <div>
+          <label>배송지 주소</label>
+          <input class="input" id="address" />
+        </div>
+        <div>
+          <label>송장번호(택배사 입력용)</label>
+          <input class="input" id="invoiceNumber" placeholder="예: CJ대한통운 1234567890" />
+        </div>
+        <div>
+          <label>희망 배송일</label>
+          <input type="date" class="input" id="desiredDate" />
+        </div>
+        <div>
+          <label>배송 요청사항</label>
+          <input class="input" id="memo" />
+        </div>
+        <div>
+          <label>상품 선택</label>
+          <select id="productSelect" class="input">
+            <option>선물용 10kg - 39,000원</option>
+            <option>가정용 7.5kg - 29,000원</option>
+            <option>가정용 5kg - 22,000원</option>
+          </select>
+        </div>
+        <div>
+          <label>수량</label>
+          <input type="number" min="1" value="1" class="input" id="quantity" />
+        </div>
+        <div>
+          <label>결제방법</label>
+          <select id="payMethod" class="input">
+            <option value="무통장입금">무통장입금</option>
+            <option value="계좌이체">계좌이체</option>
+          </select>
+          <p class="text-sm text-gray-600 mt-2">입금계좌: 농협 356-1142-1914-43 (예금주: 임우철)</p>
+        </div>
+        <button class="btn-primary px-5 py-2 rounded-lg w-full" onclick="alert('주문이 접수되었습니다! 빠른 시일 내에 연락드리겠습니다.')">주문하기</button>
+      </div>
+      <div class="mt-6">
+        <h3 class="font-bold mb-2">송장 업로드 (관리자용)</h3>
+        <input type="file" id="invoiceUpload" accept=".xlsx,.csv" class="border p-2 rounded" />
+        <p class="text-xs text-gray-500 mt-1">택배 송장번호 일괄 업로드 파일 지원</p>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="admin" class="mt-10">
+      <h2 class="text-2xl font-bold mb-4 text-orange-600">관리자 페이지</h2>
+      <div class="bg-white p-6 rounded-2xl shadow space-y-4">
+        <p>여기서 주문내역, 송장, 고객정보를 관리합니다.</p>
+        <button class="btn-primary px-4 py-2 rounded-lg">CSV 내보내기</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="text-center p-6 text-sm text-gray-500 border-t mt-8">
+    ⓒ <span id="year"></span> 순천미인 단감 | 문의: 010-0000-0000 | 농협 356-1142-1914-43 (임우철)
+  </footer>
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
