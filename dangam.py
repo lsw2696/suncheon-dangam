@@ -319,6 +319,650 @@ display(HTML(html_content))
 
 """
 
+import streamlit as st
+import json
+import csv
+import os
+import pandas as pd
+import io
+
+# --- Backend Python Functions (Adjusted for a potential Streamlit app structure) ---
+# Note: In a real Streamlit app, you might handle file persistence (like orders.csv)
+# using st.session_state or other methods appropriate for the stateless nature of Streamlit.
+# This example assumes orders.csv will persist in the deployment environment's storage.
+
+CSV_FILENAME = 'orders.csv' # Define filename as a constant
+
+def initialize_orders_file():
+    """Creates the orders.csv file with headers if it doesn't exist."""
+    if not os.path.exists(CSV_FILENAME):
+        # Define header based on your expected order data structure
+        header = ['buyerName', 'buyerPhone', 'address', 'invoiceNumber', 'desiredDate', 'memo', 'productSelect', 'quantity', 'payMethod']
+        try:
+            with open(CSV_FILENAME, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(header)
+            #st.success(f"{CSV_FILENAME} 파일이 생성되었습니다.") # Use st.success for Streamlit
+        except Exception as e:
+            #st.error(f"Failed to create {CSV_FILENAME}: {e}") # Use st.error
+            print(f"Failed to create {CSV_FILENAME}: {e}") # For console output if not running in Streamlit
+
+
+def save_order(order_data):
+    """Appends a new order to the orders.csv file."""
+    initialize_orders_file() # Ensure file exists before writing
+
+    try:
+        with open(CSV_FILENAME, 'a', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            # Ensure data is in the correct order matching the header
+            # This requires knowing the keys and their desired order
+            # Assuming order_data is a dict with keys matching the header
+            header = ['buyerName', 'buyerPhone', 'address', 'invoiceNumber', 'desiredDate', 'memo', 'productSelect', 'quantity', 'payMethod'] # Define header again for writing
+            row_data = [order_data.get(key, '') for key in header] # Get values based on header order
+            writer.writerow(row_data)
+        return "주문 정보가 성공적으로 저장되었습니다."
+    except Exception as e:
+        #st.error(f"주문 정보 저장 중 오류 발생: {e}") # Use st.error
+        print(f"주문 정보 저장 중 오류 발생: {e}") # For console output
+        return f"주문 정보 저장 중 오류 발생: {e}"
+
+
+def search_orders(search_criteria):
+    """
+    Searches the orders.csv file for orders matching buyer name or phone number.
+    Returns a list of dictionaries.
+    """
+    if not os.path.exists(CSV_FILENAME):
+        return []
+
+    try:
+        df_orders = pd.read_csv(CSV_FILENAME)
+
+        # Filter the DataFrame based on search criteria in 'buyerName' or 'buyerPhone'
+        # Convert to string and handle potential NaN values during search
+        filtered_df = df_orders[
+            df_orders['buyerName'].astype(str).str.contains(search_criteria, na=False) |
+            df_orders['buyerPhone'].astype(str).str.contains(search_criteria, na=False)
+        ]
+
+        # Convert the filtered DataFrame to a list of dictionaries
+        return filtered_df.to_dict('records') # Use to_dict('records') for list of dicts
+
+    except Exception as e:
+        print(f"An error occurred during search: {e}")
+        #st.error(f"주문 검색 중 오류 발생: {e}") # Use st.error
+        return [] # Return empty list on error
+
+
+def get_all_orders_df():
+     """
+     Reads the orders.csv file and returns a pandas DataFrame.
+     Returns an empty DataFrame if file not found or empty.
+     """
+     if not os.path.exists(CSV_FILENAME):
+         return pd.DataFrame() # Return empty DataFrame
+
+     try:
+         df_orders = pd.read_csv(CSV_FILENAME)
+         return df_orders
+     except Exception as e:
+         print(f"An error occurred while reading orders.csv: {e}")
+         #st.error(f"주문 정보를 불러오는 중 오류 발생: {e}") # Use st.error
+         return pd.DataFrame() # Return empty DataFrame on error
+
+
+def update_orders_with_invoice(uploaded_file_content, filename):
+    """
+    Updates the orders.csv file with invoice numbers from an uploaded file.
+
+    Args:
+        uploaded_file_content: The content of the uploaded file (bytes).
+        filename: The original filename of the uploaded file.
+
+    Returns:
+        A message string indicating the result of the update.
+    """
+    initialize_orders_file() # Ensure main file exists
+
+    try:
+        # Read the uploaded file into a DataFrame
+        if filename.endswith('.csv'):
+            # Decode bytes to string for CSV, then read
+            s = io.BytesIO(bytes(uploaded_file_content)).read().decode('utf-8')
+            uploaded_df = pd.read_csv(io.StringIO(s))
+        elif filename.endswith('.xlsx'):
+            uploaded_df = pd.read_excel(io.BytesIO(bytes(uploaded_file_content)))
+        else:
+            return "지원되지 않는 파일 형식입니다. .csv 또는 .xlsx 파일을 업로드해주세요."
+
+        # Check if the uploaded file has necessary columns (adjust column names as needed)
+        required_cols = ['주문자명', '연락처', '송장번호']
+        if not all(col in uploaded_df.columns for col in required_cols):
+            return f"업로드 파일에 필요한 컬럼('{', '.join(required_cols)}')이 모두 포함되어 있지 않습니다."
+
+        # Read the existing orders data
+        df_orders = get_all_orders_df()
+        if df_orders.empty:
+             return "orders.csv 파일에 기존 주문 정보가 없습니다. 주문 정보가 먼저 저장되어야 합니다."
+
+
+        # Ensure key columns are string type to avoid merge issues with mixed types
+        uploaded_df['주문자명'] = uploaded_df['주문자명'].astype(str)
+        uploaded_df['연락처'] = uploaded_df['연락처'].astype(str)
+        df_orders['buyerName'] = df_orders['buyerName'].astype(str)
+        df_orders['buyerPhone'] = df_orders['buyerPhone'].astype(str)
+
+
+        # Merge or join the two DataFrames to update '송장번호'
+        # Using a left merge to keep all existing orders
+        # Assuming '주문자명' and '연락처' are the keys to match orders
+        # Rename columns in uploaded_df to match df_orders for merge
+        uploaded_df_renamed = uploaded_df.rename(columns={
+            '주문자명': 'buyerName',
+            '연락처': 'buyerPhone',
+            '송장번호': 'invoiceNumber_new' # Rename to avoid column conflict
+        })
+
+        updated_df = pd.merge(
+            df_orders,
+            uploaded_df_renamed[['buyerName', 'buyerPhone', 'invoiceNumber_new']],
+            on=['buyerName', 'buyerPhone'],
+            how='left'
+        )
+
+        # Update the '송장번호' column where a match was found
+        # Use .fillna(df_orders['invoiceNumber']) to keep existing invoice numbers if no match
+        updated_df['invoiceNumber'] = updated_df['invoiceNumber_new'].combine_first(updated_df['invoiceNumber'])
+
+        # Drop the temporary new invoice number column
+        updated_df = updated_df.drop(columns=['invoiceNumber_new']).reset_index(drop=True)
+
+
+        # Save the updated DataFrame back to orders.csv
+        updated_df.to_csv(CSV_FILENAME, index=False, encoding='utf-8')
+
+        return "송장 번호가 성공적으로 업데이트되었습니다."
+
+    except FileNotFoundError:
+        return "orders.csv 파일을 찾을 수 없습니다."
+    except Exception as e:
+        return f"파일 처리 중 오류가 발생했습니다: {e}"
+
+
+def update_order(buyer_name, buyer_phone, updates):
+    """
+    Updates an existing order in orders.csv based on buyer name and phone.
+
+    Args:
+        buyer_name: The name of the buyer to identify the order.
+        buyer_phone: The phone number of the buyer to identify the order.
+        updates: A dictionary where keys are column names to update and values are the new values.
+
+    Returns:
+        A message string indicating the result of the update.
+    """
+    initialize_orders_file() # Ensure file exists
+
+    try:
+        df_orders = get_all_orders_df()
+
+        if df_orders.empty:
+             return "orders.csv 파일이 비어 있어 수정할 주문이 없습니다."
+
+        # Ensure key columns are string type for reliable matching
+        df_orders['buyerName'] = df_orders['buyerName'].astype(str)
+        df_orders['buyerPhone'] = df_orders['buyerPhone'].astype(str)
+        buyer_name = str(buyer_name)
+        buyer_phone = str(buyer_phone)
+
+        # Find the index of the order to update
+        order_indices = df_orders[(df_orders['buyerName'] == buyer_name) & (df_orders['buyerPhone'] == buyer_phone)].index
+
+        if order_indices.empty:
+            return f"주문자명 '{buyer_name}', 연락처 '{buyer_phone}'에 해당하는 주문을 찾을 수 없습니다."
+
+        # Apply updates to the found order(s)
+        for col, value in updates.items():
+            if col in df_orders.columns:
+                df_orders.loc[order_indices, col] = value
+            else:
+                print(f"Warning: Column '{col}' not found in orders.csv for update") # Log warning for non-existent columns
+
+        # Save the updated DataFrame back to orders.csv
+        df_orders.to_csv(CSV_FILENAME, index=False, encoding='utf-8')
+
+        return "주문 정보가 성공적으로 수정되었습니다."
+
+    except Exception as e:
+        return f"주문 수정 중 오류가 발생했습니다: {e}"
+
+def delete_order(buyer_name, buyer_phone):
+    """
+    Deletes an order from orders.csv based on buyer name and phone.
+
+    Args:
+        buyer_name: The name of the buyer to identify the order.
+        buyer_phone: The phone number of the buyer to identify the order.
+
+    Returns:
+        A message string indicating the result of the deletion.
+    """
+    initialize_orders_file() # Ensure file exists
+
+    try:
+        df_orders = get_all_orders_df()
+
+        if df_orders.empty:
+             return "orders.csv 파일이 비어 있어 삭제할 주문이 없습니다."
+
+        # Ensure key columns are string type for reliable matching
+        df_orders['buyerName'] = df_orders['buyerName'].astype(str)
+        df_orders['buyerPhone'] = df_orders['buyerPhone'].astype(str)
+        buyer_name = str(buyer_name)
+        buyer_phone = str(buyer_phone)
+
+        # Get the initial number of rows
+        initial_rows = len(df_orders)
+
+        # Filter out the order(s) to be deleted
+        # Using boolean indexing to select rows NOT matching the criteria
+        df_updated = df_orders[~((df_orders['buyerName'] == buyer_name) & (df_orders['buyerPhone'] == buyer_phone))].reset_index(drop=True)
+
+        # Check if any rows were actually removed
+        if len(df_updated) == initial_rows:
+             return f"주문자명 '{buyer_name}', 연락처 '{buyer_phone}'에 해당하는 주문을 찾을 수 없어 삭제하지 못했습니다."
+
+
+        # Save the updated DataFrame back to orders.csv
+        df_updated.to_csv(CSV_FILENAME, index=False, encoding='utf-8')
+
+        return "주문 정보가 성공적으로 삭제되었습니다."
+
+    except Exception as e:
+        return f"주문 삭제 중 오류가 발생했습니다: {e}"
+
+# Function to generate CSV content for download
+def download_orders_csv_content():
+    """
+    Reads the orders.csv file and returns its content as a CSV string.
+
+    Returns:
+        A CSV string representing the orders data, or None if file not found or error.
+    """
+    if not os.path.exists(CSV_FILENAME):
+        #st.warning("orders.csv 파일을 찾을 수 없습니다.") # Use st.warning
+        print("orders.csv 파일을 찾을 수 없습니다.") # For console output
+        return None
+
+    try:
+        df_orders = pd.read_csv(CSV_FILENAME)
+        # Convert DataFrame to CSV string
+        return df_orders.to_csv(index=False, encoding='utf-8-sig') # Use utf-8-sig for BOM in Excel
+
+    except Exception as e:
+        print(f"An error occurred while generating CSV: {e}")
+        #st.error(f"CSV 생성 중 오류가 발생했습니다: {e}") # Use st.error
+        return None
+
+
+# --- Streamlit App Structure ---
+
+# Set page config if needed (optional)
+# st.set_page_config(layout="wide")
+
+# HTML Content (replace YOUR_PUBLIC_IMAGE_URL_HERE with your actual URL)
+html_content = """
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>순천미인 단감 | 주문 웹앱</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="순천 단감 직판매 | 신선한 순천미인 단감 온라인 주문" />
+  <link rel="icon" href="https://i.imgur.com/nZVxOHE.png" />
+  <style>
+    body { background-color: #fff8f1; color: #2d2d2d; }
+    .btn-primary { background-color: #f97316; color: white; }
+    .btn-primary:hover { background-color: #ea580c; }
+    .btn-secondary { background-color: #6b7280; color: white; }
+    .btn-secondary:hover { background-color: #4b5563; }
+    .btn-danger { background-color: #ef4444; color: white; }
+    .btn-danger:hover { background-color: #dc2626; }
+    .header-bg { background: linear-gradient(to right, #f97316, #fb923c); color: white; }
+    .input { width: 100%; border-radius: 0.5rem; border: 1px solid #ddd; padding: 0.5rem 0.75rem; outline: none; }
+    .input:focus { border-color: #fb923c; box-shadow: 0 0 0 2px #fed7aa; }
+    .fade-in { opacity: 0; transition: opacity 2s ease-in-out; }
+    .fade-in.visible { opacity: 1; }
+
+    /* Add basic table styling */
+    .table-auto th, .table-auto td {
+        padding: 0.75rem;
+        border-bottom: 1px solid #ddd;
+    }
+    .table-auto th {
+        background-color: #f3f4f6;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.875rem;
+        color: #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <header class="header-bg p-4 flex justify-between items-center shadow">
+    <div class="flex items-center gap-3">
+      <img src="https://i.imgur.com/nZVxOHE.png" alt="로고" class="w-10 h-10 rounded-full shadow" />
+      <h1 class="text-2xl font-bold">순천미인 단감</h1>
+    </div>
+    <nav class="flex gap-4 text-sm">
+      <a href="#home">홈</a>
+      <a href="#order">주문</a>
+      <a href="#track">주문조회</a>
+      <a href="#admin">관리자</a>
+    </nav>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4">
+    <section id="home" class="text-center">
+      <div class="relative rounded-2xl overflow-hidden shadow-lg">
+        <!-- TODO: 이미지를 웹에 업로드하고 아래 src에 공개 이미지 URL을 넣어주세요. -->
+        <img id="mainImage" src="YOUR_PUBLIC_IMAGE_URL_HERE" alt="순천미인 단감 대표 이미지" class="w-full h-[500px] object-cover fade-in visible" />
+        <div class="absolute inset-0 bg-black/30 flex flex-col justify-center items-center text-white">
+          <h2 class="text-4xl font-bold mb-3">달콤한 순천미인 단감</h2>
+          <p class="max-w-2xl">순천의 황금빛 들녘과 맑은 강바람 아래에서 자란 신선한 단감 — 산지직송으로 만나보세요!</p>
+          <a href="#order" class="mt-6 px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-xl font-semibold">지금 주문하기</a>
+        </div>
+      </div>
+      <div id="map" class="mt-8 h-64 rounded-2xl shadow"></div>
+      <!-- Naver Map Script -->
+      <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=YOUR_NAVER_MAP_CLIENT_ID"></script>
+      <script>
+        // Ensure the map div exists before trying to load the map
+        if (document.getElementById('map')) {
+            var map = new naver.maps.Map('map', {
+              center: new naver.maps.LatLng(34.9481, 127.4890), // 순천시 중심 좌표
+              zoom: 11
+            });
+             new naver.maps.Marker({ position: new naver.maps.LatLng(34.9481, 127.4890), map: map });
+        }
+      </script>
+    </section>
+
+    <section id="order" class="mt-10">
+      <h2 class="text-2xl font-bold mb-4 text-orange-600">주문서</h2>
+      <div class="bg-white p-6 rounded-2xl shadow space-y-4">
+        <div>
+          <label for="buyerName">주문자명</label>
+          <input class="input" id="buyerName" />
+        </div>
+        <div>
+          <label for="buyerPhone">연락처</label>
+          <input class="input" id="buyerPhone" />
+        </div>
+        <div>
+          <label for="address">배송지 주소</label>
+          <input class="input" id="address" />
+        </div>
+        <div>
+          <label for="invoiceNumber">송장번호(택배사 입력용)</label>
+          <input class="input" id="invoiceNumber" placeholder="예: CJ대한통운 1234567890" />
+        </div>
+        <div>
+          <label for="desiredDate">희망 배송일</label>
+          <input type="date" class="input" id="desiredDate" />
+        </div>
+        <div>
+          <label for="memo">배송 요청사항</label>
+          <input class="input" id="memo" />
+        </div>
+        <div>
+          <label for="productSelect">상품 선택</label>
+          <select id="productSelect" class="input">
+            <option>선물용 10kg - 39,000원</option>
+            <option>가정용 7.5kg - 29,000원</option>
+            <option>가정용 5kg - 22,000원</option>
+          </select>
+        </div>
+        <div>
+          <label for="quantity">수량</label>
+          <input type="number" min="1" value="1" class="input" id="quantity" />
+        </div>
+        <div>
+          <label for="payMethod">결제방법</label>
+          <select id="payMethod" class="input">
+            <option value="무통장입금">무통장입금</option>
+            <option value="계좌이체">계좌이체</option>
+          </select>
+          <p class="text-sm text-gray-600 mt-2">입금계좌: 농협 356-1142-1914-43 (예금주: 임우철)</p>
+        </div>
+        <!-- Streamlit will handle form submission, so this button will likely trigger a rerun -->
+        <!-- You would capture form data using Streamlit input widgets instead of pure JS -->
+        <button class="btn-primary px-5 py-2 rounded-lg w-full" id="submitOrderButton">주문하기</button>
+      </div>
+       <!-- Area to display order data or status - might be replaced by Streamlit elements -->
+      <div id="orderDataDisplayArea" class="mt-6 bg-gray-100 p-4 rounded-lg hidden">
+          <h3 class="font-bold mb-2">수집된 주문 정보 (복사하여 사용하세요)</h3>
+          <pre id="orderDataDisplay" class="whitespace-pre-wrap text-sm break-all"></pre>
+          <button class="btn-primary px-4 py-2 rounded-lg mt-2" onclick="copyOrderData()">클립보드에 복사</button>
+      </div>
+      <div class="mt-6">
+        <h3 class="font-bold mb-2">송장 업로드 (관리자용)</h3>
+        <!-- Streamlit file uploader would be used here -->
+        <input type="file" id="invoiceUpload" accept=".xlsx,.csv" class="border p-2 rounded" />
+         <!-- Streamlit button would trigger upload handling -->
+        <button class="btn-primary px-4 py-2 rounded-lg mt-2" id="uploadInvoiceButton">송장 업로드</button>
+        <p class="text-xs text-gray-500 mt-1">택배 송장번호 일괄 업로드 파일 지원</p>
+         <div id="uploadStatus" class="mt-2 text-sm"></div>
+      </div>
+    </section>
+
+    <section id="track" class="mt-10">
+      <h2 class="text-2xl font-bold mb-4 text-orange-600">주문조회</h2>
+      <div class="bg-white p-6 rounded-2xl shadow space-y-4">
+        <div>
+          <label for="trackBuyerInfo">주문자명 또는 연락처</label>
+          <input class="input" id="trackBuyerInfo" placeholder="주문자명 또는 연락처를 입력하세요" />
+        </div>
+        <!-- Streamlit button would trigger search -->
+        <button class="btn-primary px-5 py-2 rounded-lg w-full" id="trackOrderButton">조회하기</button>
+        <div id="trackResultsArea" class="mt-4 hidden">
+          <h3 class="font-bold mb-2">조회 결과</h3>
+          <div id="trackResults" class="bg-gray-100 p-4 rounded-lg">
+            <!-- 조회 결과가 여기에 표시됩니다 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="admin" class="mt-10">
+      <h2 class="text-2xl font-bold mb-4 text-orange-600">관리자 페이지</h2>
+      <div class="bg-white p-6 rounded-2xl shadow space-y-4">
+        <p>여기서 주문내역, 송장, 고객정보를 관리합니다.</p>
+         <!-- Streamlit download button would be used here -->
+        <button class="btn-primary px-4 py-2 rounded-lg" id="downloadCsvButton">CSV 내보내기</button>
+        <div id="adminOrderList" class="mt-4 overflow-x-auto">
+            <!-- 주문 목록이 여기에 표시됩니다 -->
+        </div>
+         <div id="adminStatus" class="mt-4 text-sm"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center p-6 text-sm text-gray-500 border-t mt-8">
+    ⓒ <span id="year"></span> 순천미인 단감 | 문의: 010-0000-0000 | 농협 356-1142-1914-43 (임우철)
+  </footer>
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // --- JavaScript for Frontend Interactions (Needs Adaptation for Streamlit) ---
+    // The current JavaScript uses direct DOM manipulation and expects a Colab backend.
+    // For Streamlit, you would typically use Streamlit input widgets (st.text_input,
+    // st.button, st.file_uploader, st.selectbox) and handle logic in Python
+    // triggered by these widgets or their callbacks.
+    // The google.colab.kernel.invokeFunction calls will NOT work in Streamlit.
+
+    // Example of how you MIGHT adapt (Conceptual - requires significant changes):
+    // document.getElementById('submitOrderButton').addEventListener('click', function() {
+    //     const orderData = { ... }; // Collect data from inputs
+    //     // Send data to Python using Streamlit's mechanism (e.g., a form submit or a button callback)
+    //     // This requires the HTML form elements to be replaced with Streamlit widgets.
+    //     // Example conceptual call (NOT working pure JS): st.button('주문하기', on_click=submit_order_callback, args=(orderData,))
+    // });
+
+    // Similarly, tracking, admin list loading, invoice upload, edit, delete
+    // would need to be re-implemented using Streamlit's capabilities.
+    // For instance, the admin order list would likely be displayed using st.dataframe or st.table
+    // and edit/delete might use data_editor or buttons with callbacks.
+
+
+    // Placeholder JavaScript functions (won't work as-is in Streamlit without major changes)
+    function collectOrderData() { console.log("collectOrderData called - needs Streamlit adaptation"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다."); }
+    function copyOrderData() { console.log("copyOrderData called"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다."); }
+    function uploadInvoiceFile() { console.log("uploadInvoiceFile called - needs Streamlit adaptation"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다."); }
+     function downloadOrdersCsv() { console.log("downloadOrdersCsv called - needs Streamlit adaptation"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다.");}
+    function editOrder(button) { console.log("editOrder called - needs Streamlit adaptation"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다."); }
+    function deleteOrder(button) { console.log("deleteOrder called - needs Streamlit adaptation"); alert("이 기능은 Streamlit에 맞게 수정되어야 합니다."); }
+
+
+    // The original JavaScript for fetching and displaying data using google.colab.kernel.invokeFunction
+    // is NOT included here as it is incompatible with Streamlit.
+    // You will need to use Streamlit's approach for displaying data (e.g., st.write, st.dataframe, st.table).
+
+
+  </script>
+</body>
+</html>
+"""
+
+# Display the HTML content in Streamlit
+st.html(html_content)
+
+
+# --- Example of how you MIGHT integrate backend logic with Streamlit (Conceptual) ---
+# This part is COMMENTED OUT because integrating the HTML frontend with
+# Streamlit's backend logic requires replacing the HTML forms and buttons
+# with Streamlit widgets and handling their events in Python.
+
+# def submit_order_callback(order_data):
+#     """Callback function to handle order submission in Streamlit."""
+#     result_message = save_order(order_data)
+#     st.success(result_message) # Display success message in Streamlit
+
+# def track_order_callback(track_info):
+#     """Callback function to handle order tracking in Streamlit."""
+#     results = search_orders(track_info)
+#     if results:
+#         st.write("### 조회 결과")
+#         for order in results:
+#             st.json(order) # Display results as JSON or format them nicely
+#     else:
+#         st.info("일치하는 주문 정보가 없습니다.")
+
+# def display_admin_orders_callback():
+#     """Callback to display all orders in the admin section."""
+#     df_orders = get_all_orders_df()
+#     if not df_orders.empty:
+#         st.write("### 전체 주문 목록")
+#         st.dataframe(df_orders) # Use st.dataframe to display table
+#     else:
+#         st.info("저장된 주문 정보가 없습니다.")
+
+# def upload_invoice_callback(uploaded_file):
+#      """Callback to handle invoice file upload."""
+#      if uploaded_file is not None:
+#          file_content = uploaded_file.getvalue() # Get file content as bytes
+#          filename = uploaded_file.name
+#          message = update_orders_with_invoice(file_content, filename)
+#          st.info(message)
+#          # Optionally refresh the admin list
+#          # display_admin_orders_callback() # Requires re-running this function
+
+# def download_csv_callback():
+#      """Callback to handle CSV download."""
+#      csv_content = download_orders_csv_content()
+#      if csv_content:
+#          st.download_button(
+#              label="Download CSV",
+#              data=csv_content,
+#              file_name='orders.csv',
+#              mime='text/csv'
+#          )
+#      else:
+#          st.warning("다운로드할 주문 정보가 없습니다.")
+
+# --- Integrating Streamlit Widgets (Conceptual - replace HTML forms) ---
+
+# # Example for Order Form section using Streamlit widgets instead of pure HTML form
+# st.header("주문서")
+# with st.form("order_form"):
+#     buyer_name = st.text_input("주문자명")
+#     buyer_phone = st.text_input("연락처")
+#     # ... add other input fields using st.text_input, st.selectbox, st.date_input, st.number_input
+#     address = st.text_input("배송지 주소")
+#     invoice_number = st.text_input("송장번호 (택배사 입력용)")
+#     desired_date = st.date_input("희망 배송일")
+#     memo = st.text_input("배송 요청사항")
+#     product_select = st.selectbox("상품 선택", ["선물용 10kg - 39,000원", "가정용 7.5kg - 29,000원", "가정용 5kg - 22,000원"])
+#     quantity = st.number_input("수량", min_value=1, value=1)
+#     pay_method = st.selectbox("결제방법", ["무통장입금", "계좌이체"])
+
+#     # Example of collecting data and calling backend function on form submission
+#     submitted = st.form_submit_button("주문하기")
+#     if submitted:
+#         order_data = {
+#             'buyerName': buyer_name,
+#             'buyerPhone': buyer_phone,
+#             'address': address,
+#             'invoiceNumber': invoice_number,
+#             'desiredDate': desired_date.strftime('%Y-%m-%d') if desired_date else '', # Format date
+#             'memo': memo,
+#             'productSelect': product_select,
+#             'quantity': quantity,
+#             'payMethod': pay_method
+#         }
+#         submit_order_callback(order_data)
+
+
+# # Example for Order Tracking section using Streamlit widgets
+# st.header("주문조회")
+# track_info = st.text_input("주문자명 또는 연락처 입력", key="track_input")
+# if st.button("조회하기"):
+#      track_order_callback(track_info)
+
+
+# # Example for Admin Page section using Streamlit widgets
+# st.header("관리자 페이지")
+# st.write("여기서 주문내역, 송장, 고객정보를 관리합니다.")
+
+# if st.button("주문 목록 새로고침"):
+#     display_admin_orders_callback()
+
+# # File uploader for invoice
+# uploaded_file = st.file_uploader("송장 업로드 (.xlsx, .csv)", type=["xlsx", "csv"])
+# if uploaded_file is not None:
+#     upload_invoice_callback(uploaded_file)
+
+# # CSV Download button (example - requires generating content first)
+# # You'd typically generate the CSV content when this button is clicked
+# # For simplicity, let's generate it here if the file exists
+# csv_content_for_download = download_orders_csv_content()
+# if csv_content_for_download:
+#      st.download_button(
+#          label="CSV 내보내기",
+#          data=csv_content_for_download,
+#          file_name='orders.csv',
+#          mime='text/csv',
+#          key='download_orders_csv'
+#      )
+# else:
+#      st.info("다운로드할 주문 정보가 없습니다.")
+
+# # For editing/deleting individual orders, you would likely display
+# # the data using st.dataframe with editing enabled (Streamlit 1.10+)
+# # or create custom buttons/forms for each row based on get_all_orders_df() results.
+
 import json
 import csv
 import os
